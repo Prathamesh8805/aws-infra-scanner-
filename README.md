@@ -13,7 +13,10 @@ A simple, powerful tool for scanning and auditing AWS infrastructure. Get securi
 ```bash
 # Clone the repository
 git clone https://github.com/Prathamesh8805/aws-infra-scanner-
-cd aws-infra-scanner
+cd aws-infra-scanner-
+
+pthon3 -m venv venv
+source venv/bin/activate
 
 # Install the package
 pip install -e .
