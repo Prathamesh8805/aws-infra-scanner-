@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS Infrastructure Scan Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            background-color: #232f3e;
+            color: white;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        h1, h2, h3 {
+            margin-top: 0;
+        }
+        .summary {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 30px;
+        }
+        .service-section {
+            margin-bottom: 40px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #ddd;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .footer {
+            margin-top: 50px;
+            text-align: center;
+            color: #777;
+            font-size: 0.9em;
+        }
+        .resource-count {
+            font-weight: bold;
+            color: #0073bb;
+        }
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+        .alert-warning {
+            color: #8a6d3b;
+            background-color: #fcf8e3;
+            border-color: #faebcc;
+        }
+        .alert-danger {
+            color: #a94442;
+            background-color: #f2dede;
+            border-color: #ebccd1;
+        }
+        .collapsible {
+            background-color: #f1f1f1;
+            color: #444;
+            cursor: pointer;
+            padding: 18px;
+            width: 100%;
+            border: none;
+            text-align: left;
+            outline: none;
+            font-size: 15px;
+            margin-bottom: 5px;
+        }
+        .active, .collapsible:hover {
+            background-color: #e0e0e0;
+        }
+        .content {
+            padding: 0 18px;
+            display: none;
+            overflow: hidden;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AWS Infrastructure Scan Report</h1>
+            <p>Environment: {{ environment }} | Region: {{ region }} | Date: {{ timestamp }}</p>
+        </header>
+        
+        <div class="summary">
+            <h2>Executive Summary</h2>
+            <p>This report provides a comprehensive overview of the AWS infrastructure in the {{ environment }} environment, region {{ region }}.</p>
+            
+            <h3>Resources Scanned:</h3>
+            <ul>
+                {% if 'eks' in results %}
+                <li>EKS Clusters: <span class="resource-count">{{ results.eks.results.count }}</span></li>
+                {% endif %}
+                
+                {% if 'ec2' in results %}
+                <li>EC2 Instances: <span class="resource-count">{{ results.ec2.results.instance_count }}</span></li>
+                <li>Security Groups: <span class="resource-count">{{ results.ec2.results.security_group_count }}</span></li>
+                {% endif %}
+                
+                {% if 'vpc' in results %}
+                <li>VPCs: <span class="resource-count">{{ results.vpc.results.vpc_count }}</span></li>
+                {% endif %}
+                
+                {% if 'dynamodb' in results %}
+                <li>DynamoDB Tables: <span class="resource-count">{{ results.dynamodb.results.table_count }}</span></li>
+                {% endif %}
+                
+                {% if 'iam' in results %}
+                <li>IAM Users: <span class="resource-count">{{ results.iam.results.user_count }}</span></li>
+                <li>IAM Roles: <span class="resource-count">{{ results.iam.results.role_count }}</span></li>
+                {% endif %}
+                
+                {% if 'cost' in results %}
+                <li>Potential Monthly Savings: <span class="resource-count">${{ results.cost.results.total_potential_savings }}</span></li>
+                {% endif %}
+            </ul>
+            
+            {% if 'eks' in results and results.eks.results.deprecated_count > 0 %}
+            <div class="alert alert-warning">
+                <h4>⚠️ Warning: {{ results.eks.results.deprecated_count }} EKS clusters are running deprecated versions</h4>
+            </div>
+            {% endif %}
+            
+            {% if 'ec2' in results and results.ec2.results.public_ip_count > 0 %}
+            <div class="alert alert-warning">
+                <h4>⚠️ Warning: {{ results.ec2.results.public_ip_count }} EC2 instances have public IP addresses</h4>
+            </div>
+            {% endif %}
+            
+            {% if 'ec2' in results and results.ec2.results.open_security_group_count > 0 %}
+            <div class="alert alert-warning">
+                <h4>⚠️ Warning: {{ results.ec2.results.open_security_group_count }} security groups have potentially risky open ports</h4>
+            </div>
+            {% endif %}
+            
+            {% if 'iam' in results and results.iam.results.users_with_old_keys_count > 0 %}
+            <div class="alert alert-warning">
+                <h4>⚠️ Warning: {{ results.iam.results.users_with_old_keys_count }} IAM users have access keys older than 90 days</h4>
+            </div>
+            {% endif %}
+        </div>
+        
+        {% if 'eks' in results %}
+        <div class="service-section">
+            <h2>EKS Clusters</h2>
+            {% if results.eks.results.clusters %}
+                {% for cluster in results.eks.results.clusters %}
+                <button class="collapsible">{{ cluster.name }} ({{ cluster.status }})</button>
+                <div class="content">
+                    <h3>Cluster Details</h3>
+                    <table>
+                        <tr>
+                            <th>Property</th>
+                            <th>Value</th>
+                        </tr>
+                        <tr>
+                            <td>ARN</td>
+                            <td>{{ cluster.arn }}</td>
+                        </tr>
+                        <tr>
+                            <td>Created At</td>
+                            <td>{{ cluster.createdAt }}</td>
+                        </tr>
+                        <tr>
+                            <td>Kubernetes Version</td>
+                            <td>{{ cluster.version }}</td>
+                        </tr>
+                        <tr>
+                            <td>Endpoint</td>
+                            <td>{{ cluster.endpoint }}</td>
+                        </tr>
+                        <tr>
+                            <td>Role ARN</td>
+                            <td>{{ cluster.roleArn }}</td>
+                        </tr>
+                    </table>
+                    
+                    <h3>Nodegroups ({{ cluster.nodegroups|length }})</h3>
+                    {% for nodegroup in cluster.nodegroups %}
+                    <h4>{{ nodegroup.nodegroupName }}</h4>
+                    <table>
+                        <tr>
+                            <th>Property</th>
+                            <th>Value</th>
+                        </tr>
+                        <tr>
+                            <td>Status</td>
+                            <td>{{ nodegroup.status }}</td>
+                        </tr>
+                        <tr>
+                            <td>Instance Types</td>
+                            <td>{{ nodegroup.instanceTypes|join(', ') }}</td>
+                        </tr>
+                        <tr>
+                            <td>Capacity Type</td>
+                            <td>{{ nodegroup.capacityType }}</td>
+                        </tr>
+                    </table>
+                    {% endfor %}
+                    
+                    <h3>Addons ({{ cluster.addons|length }})</h3>
+                    {% for addon in cluster.addons %}
+                    <table>
+                        <tr>
+                            <th>Name</th>
+                            <th>Version</th>
+                            <th>Status</th>
+                        </tr>
+                        <tr>
+                            <td>{{ addon.addonName }}</td>
+                            <td>{{ addon.addonVersion }}</td>
+                            <td>{{ addon.status }}</td>
+                        </tr>
+                    </table>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>No EKS clusters found in this region.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        {% if 'ec2' in results %}
+        <div class="service-section">
+            <h2>EC2 Resources</h2>
+            
+            <h3>Instances ({{ results.ec2.results.instance_count }})</h3>
+            {% if results.ec2.results.instances %}
+                {% for instance in results.ec2.results.instances %}
+                <button class="collapsible">{{ instance.InstanceId }} ({{ instance.State.Name }})</button>
+                <div class="content">
+                    <table>
+                        <tr>
+                            <th>Property</th>
+                            <th>Value</th>
+                        </tr>
+                        <tr>
+                            <td>Instance Type</td>
+                            <td>{{ instance.InstanceType }}</td>
+                        </tr>
+                        <tr>
+                            <td>Launch Time</td>
+                            <td>{{ instance.LaunchTime }}</td>
+                        </tr>
+                        <tr>
+                            <td>VPC ID</td>
+                            <td>{{ instance.VpcId }}</td>
+                        </tr>
+                        <tr>
+                            <td>Subnet ID</td>
+                            <td>{{ instance.SubnetId }}</td>
+                        </tr>
+                        <tr>
+                            <td>Private IP</td>
+                            <td>{{ instance.PrivateIpAddress }}</td>
+                        </tr>
+                        {% if instance.PublicIpAddress %}
+                        <tr>
+                            <td>Public IP</td>
+                            <td>{{ instance.PublicIpAddress }}</td>
+                        </tr>
+                        {% endif %}
+                    </table>
+                    
+                    <h4>Security Groups</h4>
+                    <table>
+                        <tr>
+                            <th>Group ID</th>
+                            <th>Group Name</th>
+                        </tr>
+                        {% for sg in instance.SecurityGroups %}
+                        <tr>
+                            <td>{{ sg.GroupId }}</td>
+                            <td>{{ sg.GroupName }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                    
+                    <h4>Tags</h4>
+                    {% if instance.Tags %}
+                    <table>
+                        <tr>
+                            <th>Key</th>
+                            <th>Value</th>
+                        </tr>
+                        {% for tag in instance.Tags %}
+                        <tr>
+                            <td>{{ tag.Key }}</td>
+                            <td>{{ tag.Value }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                    {% else %}
+                    <p>No tags found for this instance.</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>No EC2 instances found in this region.</p>
+            {% endif %}
+            
+            <h3>Security Groups ({{ results.ec2.results.security_group_count }})</h3>
+            {% if results.ec2.results.security_groups %}
+                {% for sg in results.ec2.results.security_groups %}
+                <button class="collapsible">{{ sg.GroupName }} ({{ sg.GroupId }})</button>
+                <div class="content">
+                    <h4>Inbound Rules</h4>
+                    <table>
+                        <tr>
+                            <th>Protocol</th>
+                            <th>Port Range</th>
+                            <th>Source</th>
+                            <th>Description</th>
+                        </tr>
+                        {% for rule in sg.IpPermissions %}
+                        <tr>
+                            <td>{{ rule.IpProtocol if rule.IpProtocol != "-1" else "All" }}</td>
+                            <td>
+                                {% if rule.FromPort == rule.ToPort %}
+                                    {{ rule.FromPort if rule.FromPort else "All" }}
+                                {% elif rule.FromPort and rule.ToPort %}
+                                    {{ rule.FromPort }}-{{ rule.ToPort }}
+                                {% else %}
+                                    All
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if rule.IpRanges %}
+                                    {% for ip_range in rule.IpRanges %}
+                                        {{ ip_range.CidrIp }}<br>
+                                    {% endfor %}
+                                {% endif %}
+                                {% if rule.UserIdGroupPairs %}
+                                    {% for group in rule.UserIdGroupPairs %}
+                                        {{ group.GroupId }}<br>
+                                    {% endfor %}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if rule.IpRanges and rule.IpRanges[0].Description %}
+                                    {{ rule.IpRanges[0].Description }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>No security groups found in this region.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        {% if 'vpc' in results %}
+        <div class="service-section">
+            <h2>VPC Resources</h2>
+            {% if results.vpc.results.vpcs %}
+                {% for vpc_detail in results.vpc.results.vpcs %}
+                <button class="collapsible">{{ vpc_detail.vpc.VpcId }} ({{ vpc_detail.vpc.CidrBlock }})</button>
+                <div class="content">
+                    <h3>VPC Details</h3>
+                    <table>
+                        <tr>
+                            <th>Property</th>
+                            <th>Value</th>
+                        </tr>
+                        <tr>
+                            <td>CIDR Block</td>
+                            <td>{{ vpc_detail.vpc.CidrBlock }}</td>
+                        </tr>
+                        <tr>
+                            <td>State</td>
+                            <td>{{ vpc_detail.vpc.State }}</td>
+                        </tr>
+                        <tr>
+                            <td>Default VPC</td>
+                            <td>{{ vpc_detail.vpc.IsDefault }}</td>
+                        </tr>
+                    </table>
+                    
+                    <h3>Subnets ({{ vpc_detail.subnets|length }})</h3>
+                    {% if vpc_detail.subnets %}
+                    <table>
+                        <tr>
+                            <th>Subnet ID</th>
+                            <th>CIDR Block</th>
+                            <th>AZ</th>
+                            <th>Public</th>
+                        </tr>
+                        {% for subnet in vpc_detail.subnets %}
+                        <tr>
+                            <td>{{ subnet.SubnetId }}</td>
+                            <td>{{ subnet.CidrBlock }}</td>
+                            <td>{{ subnet.AvailabilityZone }}</td>
+                            <td>{{ subnet.MapPublicIpOnLaunch }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                    {% else %}
+                    <p>No subnets found for this VPC.</p>
+                    {% endif %}
+                    
+                    <h3>Route Tables ({{ vpc_detail.route_tables|length }})</h3>
+                    {% if vpc_detail.route_tables %}
+                        {% for rt in vpc_detail.route_tables %}
+                        <h4>{{ rt.RouteTableId }}</h4>
+                        <table>
+                            <tr>
+                                <th>Destination</th>
+                                <th>Target</th>
+                                <th>Status</th>
+                            </tr>
+                            {% for route in rt.Routes %}
+                            <tr>
+                                <td>{{ route.DestinationCidrBlock if 'DestinationCidrBlock' in route else route.DestinationIpv6CidrBlock }}</td>
+                                <td>
+                                    {% if 'GatewayId' in route %}
+                                        Gateway: {{ route.GatewayId }}
+                                    {% elif 'NatGatewayId' in route %}
+                                        NAT: {{ route.NatGatewayId }}
+                                    {% elif 'InstanceId' in route %}
+                                        Instance: {{ route.InstanceId }}
+                                    {% else %}
+                                        Local
+                                    {% endif %}
+                                </td>
+                                <td>{{ route.State }}</td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                        {% endfor %}
+                    {% else %}
+                    <p>No route tables found for this VPC.</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>No VPCs found in this region.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        {% if 'dynamodb' in results %}
+        <div class="service-section">
+            <h2>DynamoDB Tables</h2>
+            {% if results.dynamodb.results.tables %}
+                {% for table in results.dynamodb.results.tables %}
+                <button class="collapsible">{{ table.TableName }}</button>
+                <div class="content">
+                    <h3>Table Details</h3>
+                    <table>
+                        <tr>
+                            <th>Property</th>
+                            <th>Value</th>
+                        </tr>
+                        <tr>
+                            <td>Status</td>
+                            <td>{{ table.TableStatus }}</td>
+                        </tr>
+                        <tr>
+                            <td>Creation Date</td>
+                            <td>{{ table.CreationDateTime }}</td>
+                        </tr>
+                        <tr>
+                            <td>Item Count</td>
+                            <td>{{ table.ItemCount }}</td>
+                        </tr>
+                        <tr>
+                            <td>Size (Bytes)</td>
+                            <td>{{ table.TableSizeBytes }}</td>
+                        </tr>
+                    </table>
+                    
+                    <h3>Key Schema</h3>
+                    <table>
+                        <tr>
+                            <th>Attribute Name</th>
+                            <th>Key Type</th>
+                        </tr>
+                        {% for key in table.KeySchema %}
+                        <tr>
+                            <td>{{ key.AttributeName }}</td>
+                            <td>{{ key.KeyType }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                    
+                    <h3>Provisioning</h3>
+                    {% if table.BillingModeSummary and table.BillingModeSummary.BillingMode == 'PAY_PER_REQUEST' %}
+                    <p>Billing Mode: On-Demand (PAY_PER_REQUEST)</p>
+                    {% elif table.ProvisionedThroughput %}
+                    <table>
+                        <tr>
+                            <th>Metric</th>
+                            <th>Value</th>
+                        </tr>
+                        <tr>
+                            <td>Read Capacity Units</td>
+                            <td>{{ table.ProvisionedThroughput.ReadCapacityUnits }}</td>
+                        </tr>
+                        <tr>
+                            <td>Write Capacity Units</td>
+                            <td>{{ table.ProvisionedThroughput.WriteCapacityUnits }}</td>
+                        </tr>
+                    </table>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>No DynamoDB tables found in this region.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        {% if 'iam' in results %}
+        <div class="service-section">
+            <h2>IAM Resources</h2>
+            
+            <h3>Users with Old Access Keys ({{ results.iam.results.users_with_old_keys_count }})</h3>
+            {% if results.iam.results.users_with_old_keys %}
+                {% for user in results.iam.results.users_with_old_keys %}
+                <button class="collapsible">{{ user.UserName }}</button>
+                <div class="content">
+                    <table>
+                        <tr>
+                            <th>Access Key ID</th>
+                            <th>Created</th>
+                            <th>Age (Days)</th>
+                        </tr>
+                        {% for key in user.OldAccessKeys %}
+                        <tr>
+                            <td>{{ key.AccessKeyId }}</td>
+                            <td>{{ key.CreateDate }}</td>
+                            <td>{{ key.AgeDays }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>No users with old access keys found.</p>
+            {% endif %}
+            
+            <h3>Permissive Roles ({{ results.iam.results.permissive_role_count }})</h3>
+            {% if results.iam.results.permissive_roles %}
+                {% for role in results.iam.results.permissive_roles %}
+                <button class="collapsible">{{ role.RoleName }}</button>
+                <div class="content">
+                    <h4>Permissive Statements</h4>
+                    {% for statement in role.PermissiveStatements %}
+                    <table>
+                        <tr>
+                            <th>Policy Name</th>
+                            <th>Policy Type</th>
+                            <th>Details</th>
+                        </tr>
+                        <tr>
+                            <td>{{ statement.PolicyName }}</td>
+                            <td>{{ statement.PolicyType }}</td>
+                            <td>
+                                {% if statement.PolicyType == 'Managed' %}
+                                    {{ statement.Reason }}
+                                {% else %}
+                                    Action: {{ statement.Statement.Action }}<br>
+                                    Resource: {{ statement.Statement.Resource }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </table>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>No permissive roles found.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        {% if 'cost' in results %}
+        <div class="service-section">
+            <h2>Cost Optimization</h2>
+            
+            <h3>Cost by Service</h3>
+            <table>
+                <tr>
+                    <th>Service</th>
+                    <th>Amount</th>
+                </tr>
+                {% for service_cost in results.cost.results.cost_by_service %}
+                <tr>
+                    <td>{{ service_cost.service }}</td>
+                    <td>${{ service_cost.amount }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+            
+            <h3>Savings Recommendations</h3>
+            {% if results.cost.results.savings_recommendations %}
+                {% for rec in results.cost.results.savings_recommendations %}
+                <button class="collapsible">{{ rec.recommendation_type }} - ${{ rec.estimated_monthly_savings }} monthly savings</button>
+                <div class="content">
+                    <table>
+                        <tr>
+                            <th>Service</th>
+                            <th>Details</th>
+                            <th>Monthly Savings</th>
+                        </tr>
+                        <tr>
+                            <td>{{ rec.service }}</td>
+                            <td>{{ rec.details }}</td>
+                            <td>${{ rec.estimated_monthly_savings }}</td>
+                        </tr>
+                    </table>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>No savings recommendations found.</p>
+            {% endif %}
+            
+            <h3>Cost Anomalies</h3>
+            {% if results.cost.results.cost_anomalies %}
+                <table>
+                    <tr>
+                        <th>Service</th>
+                        <th>Period</th>
+                        <th>Impact</th>
+                        <th>Reason</th>
+                    </tr>
+                    {% for anomaly in results.cost.results.cost_anomalies %}
+                    <tr>
+                        <td>{{ anomaly.service }}</td>
+                        <td>{{ anomaly.anomaly_start_date }} to {{ anomaly.anomaly_end_date }}</td>
+                        <td>${{ anomaly.impact }}</td>
+                        <td>{{ anomaly.reason }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            {% else %}
+                <p>No cost anomalies found.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        <div class="footer">
+            <p>Report generated on {{ timestamp }}</p>
+            <p>EKS Infrastructure Scanner</p>
+        </div>
+    </div>
+    
+    <script>
+        var coll = document.getElementsByClassName("collapsible");
+        var i;
+
+        for (i = 0; i < coll.length; i++) {
+            coll[i].addEventListener("click", function() {
+                this.classList.toggle("active");
+                var content = this.nextElementSibling;
+                if (content.style.display === "block") {
+                    content.style.display = "none";
+                } else {
+                    content.style.display = "block";
+                }
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+recursive-include src/reports/templates *.html
+recursive-include src/reports/static *.css *.js
+recursive-include src/dashboard/templates *.html
+recursive-include src/dashboard/static *.css *.js
